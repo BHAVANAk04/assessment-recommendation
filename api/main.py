@@ -1,9 +1,8 @@
+import pandas as pd
+import re
 from fastapi import FastAPI
 from pydantic import BaseModel
-import pandas as pd
-import numpy as np
-import math
-import re
+
 
 app = FastAPI(title="SHL Assessment Recommendation API")
 
