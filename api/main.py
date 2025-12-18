@@ -1,51 +1,38 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import pandas as pd
-import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-app = FastAPI(title="SHL Assessment Recommendation API")
+app = FastAPI()
+
+# Load data once (important for memory)
+df = pd.read_csv("shl_catalog.csv")
+
+vectorizer = TfidfVectorizer(stop_words="english")
+tfidf_matrix = vectorizer.fit_transform(df["Query"])
 
 class QueryRequest(BaseModel):
     query: str
 
-# Load dataset
-df = pd.read_csv("shl_catalog.csv").fillna("")
-
-def tokenize(text: str):
-    return set(re.findall(r"\w+", text.lower()))
-
 @app.get("/")
-def root():
+def health():
     return {"status": "API running"}
 
 @app.post("/recommend")
 def recommend(req: QueryRequest):
-    query_tokens = tokenize(req.query)
+    user_vec = vectorizer.transform([req.query])
+    similarities = cosine_similarity(user_vec, tfidf_matrix)[0]
 
-    scored_rows = []
-    for idx, row in df.iterrows():
-        # Use entire row text → avoids KeyError completely
-        row_text = " ".join(map(str, row.values))
-        tokens = tokenize(row_text)
-        score = len(query_tokens & tokens)
-        scored_rows.append((score, idx))
-
-    # Sort by relevance
-    scored_rows.sort(reverse=True)
-    top = scored_rows[:10]
+    top_indices = similarities.argsort()[-5:][::-1]
 
     results = []
-    for _, idx in top:
-        row = df.iloc[idx]
+    for idx in top_indices:
+        url = df.iloc[idx]["Assessment_url"]
 
         results.append({
-            "name": str(row.get("Assessment Name", row.get("assessment_name", row.get("name", "")))),
-            "url": str(row.get("URL", row.get("url", ""))),
-            "adaptive_support": str(row.get("Adaptive Support", "No")),
-            "description": str(row.get("Assessment Description", row.get("description", ""))),
-            "duration": int(row.get("Duration", 60)),
-            "remote_support": str(row.get("Remote Support", "Yes")),
-            "test_type": [str(row.get("Test Type", row.get("test_type", "")))]
+            "name": url.split("/")[-2].replace("-", " ").title(),
+            "url": url
         })
 
     return {"recommended_assessments": results}
