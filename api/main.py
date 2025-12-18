@@ -1,37 +1,71 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+import math
+import re
 
-app = FastAPI()
-
-# Load data once (important for memory)
-df = pd.read_csv("shl_catalog.csv")
-
-vectorizer = TfidfVectorizer(stop_words="english")
-tfidf_matrix = vectorizer.fit_transform(df["Query"])
+app = FastAPI(title="SHL Assessment Recommendation API")
 
 class QueryRequest(BaseModel):
     query: str
 
+df = pd.read_csv("shl_catalog.csv")
+
+def tokenize(text):
+    return re.findall(r"[a-zA-Z]+", text.lower())
+
+# Build vocabulary
+documents = [tokenize(q) for q in df["Query"]]
+vocab = sorted(set(word for doc in documents for word in doc))
+word_index = {w: i for i, w in enumerate(vocab)}
+
+# Compute IDF
+N = len(documents)
+idf = np.zeros(len(vocab))
+for word, i in word_index.items():
+    df_count = sum(word in doc for doc in documents)
+    idf[i] = math.log((N + 1) / (df_count + 1)) + 1
+
+# Compute TF-IDF matrix
+tfidf_docs = []
+for doc in documents:
+    tf = np.zeros(len(vocab))
+    for w in doc:
+        tf[word_index[w]] += 1
+    tfidf_docs.append(tf * idf)
+
+tfidf_docs = np.array(tfidf_docs)
+
+def vectorize_query(query):
+    tf = np.zeros(len(vocab))
+    for w in tokenize(query):
+        if w in word_index:
+            tf[word_index[w]] += 1
+    return tf * idf
+
+def cosine(a, b):
+    if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
+        return 0
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
 @app.get("/")
-def health():
+def root():
     return {"status": "API running"}
 
 @app.post("/recommend")
 def recommend(req: QueryRequest):
-    user_vec = vectorizer.transform([req.query])
-    similarities = cosine_similarity(user_vec, tfidf_matrix)[0]
+    q_vec = vectorize_query(req.query)
+    scores = [cosine(q_vec, doc) for doc in tfidf_docs]
 
-    top_indices = similarities.argsort()[-5:][::-1]
+    top_idx = np.argsort(scores)[::-1][:5]
 
     results = []
-    for idx in top_indices:
-        url = df.iloc[idx]["Assessment_url"]
-
+    for i in top_idx:
+        url = df.iloc[i]["Assessment_url"]
+        name = url.rstrip("/").split("/")[-1].replace("-", " ").title()
         results.append({
-            "name": url.split("/")[-2].replace("-", " ").title(),
+            "name": name,
             "url": url
         })
 
