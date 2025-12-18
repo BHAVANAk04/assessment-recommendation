@@ -8,10 +8,10 @@ app = FastAPI(title="SHL Assessment Recommendation API")
 class QueryRequest(BaseModel):
     query: str
 
-# Load catalog
+# Load dataset
 df = pd.read_csv("shl_catalog.csv").fillna("")
 
-def tokenize(text):
+def tokenize(text: str):
     return set(re.findall(r"\w+", text.lower()))
 
 @app.get("/")
@@ -22,22 +22,24 @@ def root():
 def recommend(req: QueryRequest):
     query_tokens = tokenize(req.query)
 
-    scores = []
+    scored_rows = []
     for idx, row in df.iterrows():
-        text = f"{row.to_string()}"
-        tokens = tokenize(text)
+        # Use entire row text → avoids KeyError completely
+        row_text = " ".join(map(str, row.values))
+        tokens = tokenize(row_text)
         score = len(query_tokens & tokens)
-        scores.append((score, idx))
+        scored_rows.append((score, idx))
 
-    scores.sort(reverse=True)
-    top = scores[:10]
+    # Sort by relevance
+    scored_rows.sort(reverse=True)
+    top = scored_rows[:10]
 
     results = []
     for _, idx in top:
         row = df.iloc[idx]
 
         results.append({
-            "name": str(row.get("Assessment Name", row.get("name", ""))),
+            "name": str(row.get("Assessment Name", row.get("assessment_name", row.get("name", "")))),
             "url": str(row.get("URL", row.get("url", ""))),
             "adaptive_support": str(row.get("Adaptive Support", "No")),
             "description": str(row.get("Assessment Description", row.get("description", ""))),
@@ -47,4 +49,3 @@ def recommend(req: QueryRequest):
         })
 
     return {"recommended_assessments": results}
-
