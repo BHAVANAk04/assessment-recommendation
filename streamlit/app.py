@@ -1,20 +1,25 @@
-
 import streamlit as st
 import requests
 
-API_URL = st.secrets.get("API_URL","https://YOUR_API_URL/recommend")
+st.title("SHL Assessment Recommendation System")
 
-st.set_page_config(page_title="SHL Assessment Recommendation", layout="centered")
-st.title("Recommended SHL Assessments")
-
-query = st.text_area("Job Description / Hiring Requirements", height=150)
+query = st.text_area("Enter job description")
 
 if st.button("Get Recommendations"):
-    if not query.strip():
-        st.warning("Please enter a query.")
+    if query.strip() == "":
+        st.warning("Enter a job description")
     else:
-        with st.spinner("Fetching recommendations..."):
-            r = requests.post(API_URL, json={"query": query}, timeout=30)
-            data = r.json()
-            for item in data.get("recommended_assessments", []):
-                st.markdown(f"- [{item['name']}]({item['url']})")
+        response = requests.post(
+            "https://assessment-recommendation-2.onrender.com/recommend",
+            json={"query": query}
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            for rec in data["recommended_assessments"]:
+                st.subheader(rec["name"])
+                st.write(rec["description"])
+                st.write("Duration:", rec["duration"])
+                st.write("URL:", rec["url"])
+        else:
+            st.error("API error")
