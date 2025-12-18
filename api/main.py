@@ -24,7 +24,7 @@ def recommend(req: QueryRequest):
 
     scores = []
     for idx, row in df.iterrows():
-        text = f"{row['name']} {row['description']} {row['test_type']}"
+        text = f"{row.to_string()}"
         tokens = tokenize(text)
         score = len(query_tokens & tokens)
         scores.append((score, idx))
@@ -35,14 +35,16 @@ def recommend(req: QueryRequest):
     results = []
     for _, idx in top:
         row = df.iloc[idx]
+
         results.append({
-            "name": row["name"],
-            "url": row["url"],
-            "adaptive_support": row.get("adaptive_support", "No"),
-            "description": row["description"],
-            "duration": int(row.get("duration", 60)),
-            "remote_support": row.get("remote_support", "Yes"),
-            "test_type": [row["test_type"]]
+            "name": str(row.get("Assessment Name", row.get("name", ""))),
+            "url": str(row.get("URL", row.get("url", ""))),
+            "adaptive_support": str(row.get("Adaptive Support", "No")),
+            "description": str(row.get("Assessment Description", row.get("description", ""))),
+            "duration": int(row.get("Duration", 60)),
+            "remote_support": str(row.get("Remote Support", "Yes")),
+            "test_type": [str(row.get("Test Type", row.get("test_type", "")))]
         })
 
     return {"recommended_assessments": results}
+
