@@ -1,27 +1,41 @@
 import pandas as pd
 import re
+import math
+import numpy as np
 from fastapi import FastAPI
 from pydantic import BaseModel
-
 
 app = FastAPI(title="SHL Assessment Recommendation API")
 
 class QueryRequest(BaseModel):
     query: str
 
+# Load catalog
 df = pd.read_csv("shl_catalog.csv")
 
 def tokenize(text):
+    if pd.isna(text):
+        return []
     return re.findall(r"[a-zA-Z]+", text.lower())
 
+# 🔴 FIX 1: build documents from assessment content, NOT query column
+documents = []
+for _, row in df.iterrows():
+    combined_text = " ".join([
+        str(row.get("Assessment_name", "")),
+        str(row.get("Description", "")),
+        str(row.get("Skills", "")),
+    ])
+    documents.append(tokenize(combined_text))
+
 # Build vocabulary
-documents = [tokenize(q) for q in df["Query"]]
 vocab = sorted(set(word for doc in documents for word in doc))
 word_index = {w: i for i, w in enumerate(vocab)}
 
 # Compute IDF
 N = len(documents)
 idf = np.zeros(len(vocab))
+
 for word, i in word_index.items():
     df_count = sum(word in doc for doc in documents)
     idf[i] = math.log((N + 1) / (df_count + 1)) + 1
@@ -45,8 +59,8 @@ def vectorize_query(query):
 
 def cosine(a, b):
     if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
-        return 0
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+        return 0.0
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 @app.get("/")
 def root():
@@ -61,11 +75,9 @@ def recommend(req: QueryRequest):
 
     results = []
     for i in top_idx:
-        url = df.iloc[i]["Assessment_url"]
-        name = url.rstrip("/").split("/")[-1].replace("-", " ").title()
         results.append({
-            "name": name,
-            "url": url
+            "name": df.iloc[i].get("Assessment_name", "Unknown Assessment"),
+            "url": df.iloc[i].get("Assessment_url", "")
         })
 
     return {"recommended_assessments": results}
