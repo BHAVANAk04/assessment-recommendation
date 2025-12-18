@@ -16,10 +16,18 @@ if st.button("Get Recommendations"):
 
         if response.status_code == 200:
             data = response.json()
+
             for rec in data["recommended_assessments"]:
-                st.subheader(rec["name"])
-                st.write(rec["description"])
-                st.write("Duration:", rec["duration"])
-                st.write("URL:", rec["url"])
+                st.subheader(rec.get("name", "Unnamed Assessment"))
+
+                # ✅ FIX: do NOT assume description exists
+                if "description" in rec:
+                    st.write(rec["description"])
+
+                if "duration" in rec:
+                    st.write("Duration:", rec["duration"])
+
+                if "url" in rec:
+                    st.write("URL:", rec["url"])
         else:
             st.error("API error")
